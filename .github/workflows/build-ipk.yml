@@ -21,7 +21,7 @@ jobs:
             sdk_url: "https://archive.openwrt.org/releases/23.05.6/targets/x86/64/openwrt-sdk-23.05.6-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.xz"
             pkg_type: "ipk"
           - version: "25.12.5"
-            sdk_url: "https://downloads.openwrt.org/releases/25.12.5/targets/x86/64/openwrt-sdk-25.12.5-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst"
+            sdk_url: "https://downloads.openwrt.org/releases/25.12.5/targets/x86/generic/openwrt-sdk-25.12.5-x86-generic_gcc-14.3.0_musl.Linux-x86_64.tar.zst"
             pkg_type: "apk"
 
     steps:
@@ -51,12 +51,17 @@ jobs:
           cd sdk_env
           ./scripts/feeds update -a
           ./scripts/feeds install -a
+
           echo "CONFIG_PACKAGE_luci-app-nvr=m" >> .config
+          echo "CONFIG_PACKAGE_luci-i18n-nvr-zh-cn=m" >> .config
           make defconfig
+
           make package/luci-app-nvr/compile V=s -j2
+          make package/luci-i18n-nvr/compile V=s -j2 || true
 
           echo "==== 生成的 ${{ matrix.pkg_type }} 文件 ===="
-          find bin/ \( -name "*luci-app-nvr*.ipk" -o -name "*luci-app-nvr*.apk" \)
+          find bin/ \( -name "*luci-app-nvr*.ipk" -o -name "*luci-app-nvr*.apk" \
+                    -o -name "*luci-i18n-nvr*.ipk" -o -name "*luci-i18n-nvr*.apk" \)
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
@@ -65,17 +70,17 @@ jobs:
           path: |
             sdk_env/bin/**/*luci-app-nvr*.ipk
             sdk_env/bin/**/*luci-app-nvr*.apk
+            sdk_env/bin/**/*luci-i18n-nvr*.ipk
+            sdk_env/bin/**/*luci-i18n-nvr*.apk
           if-no-files-found: error
 
-      - name: Rename packages with version prefix
+      - name: Collect packages
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           mkdir -p release-assets
-          TAG="${GITHUB_REF_NAME}"
-          find sdk_env/bin \( -name "*luci-app-nvr*.ipk" -o -name "*luci-app-nvr*.apk" \) | while read -r f; do
-            base=$(basename "$f")
-            cp "$f" "release-assets/${TAG}_${{ matrix.version }}_${base}"
-          done
+          find sdk_env/bin \( -name "*luci-app-nvr*.ipk" -o -name "*luci-app-nvr*.apk" \
+                            -o -name "*luci-i18n-nvr*.ipk" -o -name "*luci-i18n-nvr*.apk" \) \
+            -exec cp {} release-assets/ \;
           echo "==== Release assets ===="
           ls -la release-assets/
 
