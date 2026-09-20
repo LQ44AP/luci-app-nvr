@@ -4,7 +4,10 @@ on:
   workflow_dispatch:          # 手动触发
   push:
     tags:
-      - 'v*'                  # tag 形如 v1.0.0 / v1.2.3-beta 时自动触发
+      - 'v*'                  # tag 形如 v1.0.0 时自动触发
+
+permissions:
+  contents: write             # 发布 Release 需要写权限
 
 jobs:
   build:
@@ -34,10 +37,12 @@ jobs:
       - name: Compile Package
         run: |
           set -e
+          # 1. 下载 SDK（统一命名，tar 自动识别 xz / zst）
           wget -q "${{ matrix.sdk_url }}" -O sdk.tar
           mkdir -p sdk_env
           tar -xf sdk.tar -C sdk_env --strip-components=1
 
+          # 2. 准备插件目录
           PKG_DIR="sdk_env/package/luci-app-nvr"
           mkdir -p "$PKG_DIR"
           cp -a Makefile "$PKG_DIR/"
@@ -45,36 +50,39 @@ jobs:
           [ -d files ]  && cp -a files/. "$PKG_DIR/"
           [ -d po ]     && cp -a po "$PKG_DIR/"
 
+          # 3. 激活配置
           cd sdk_env
           ./scripts/feeds update -a
           ./scripts/feeds install -a
           echo "CONFIG_PACKAGE_luci-app-nvr=m" >> .config
           make defconfig
+
+          # 4. 编译（-j2 防 OOM）
           make package/luci-app-nvr/compile V=s -j2
 
-          echo "==== 生成文件 ===="
-          find bin/ -name "*.${{ matrix.pkg_type }}"
+          # 5. 诊断：只列出 luci-app-nvr 的产物
+          echo "==== 生成的 ${{ matrix.pkg_type }} 文件 ===="
+          find bin/ \( -name "*luci-app-nvr*.ipk" -o -name "*luci-app-nvr*.apk" \)
 
-      # 1. 每个版本单独上传为 Artifact（手动触发时也能下载）
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: luci-app-nvr-${{ matrix.version }}
           path: |
-            sdk_env/bin/**/*.ipk
-            sdk_env/bin/**/*.apk
+            sdk_env/bin/**/*luci-app-nvr*.ipk
+            sdk_env/bin/**/*luci-app-nvr*.apk
           if-no-files-found: error
 
-      # 2. tag 触发时，把产物发布到 Release
       - name: Rename packages with version prefix
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           mkdir -p release-assets
           TAG="${GITHUB_REF_NAME}"
-          find sdk_env/bin -name "*.ipk" -o -name "*.apk" | while read f; do
+          find sdk_env/bin \( -name "*luci-app-nvr*.ipk" -o -name "*luci-app-nvr*.apk" \) | while read -r f; do
             base=$(basename "$f")
             cp "$f" "release-assets/${TAG}_${{ matrix.version }}_${base}"
           done
+          echo "==== Release assets ===="
           ls -la release-assets/
 
       - name: Release
