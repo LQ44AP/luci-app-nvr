@@ -37,12 +37,10 @@ jobs:
       - name: Compile Package
         run: |
           set -e
-          # 1. 下载 SDK（统一命名，tar 自动识别 xz / zst）
           wget -q "${{ matrix.sdk_url }}" -O sdk.tar
           mkdir -p sdk_env
           tar -xf sdk.tar -C sdk_env --strip-components=1
 
-          # 2. 准备插件目录
           PKG_DIR="sdk_env/package/luci-app-nvr"
           mkdir -p "$PKG_DIR"
           cp -a Makefile "$PKG_DIR/"
@@ -50,17 +48,13 @@ jobs:
           [ -d files ]  && cp -a files/. "$PKG_DIR/"
           [ -d po ]     && cp -a po "$PKG_DIR/"
 
-          # 3. 激活配置
           cd sdk_env
           ./scripts/feeds update -a
           ./scripts/feeds install -a
           echo "CONFIG_PACKAGE_luci-app-nvr=m" >> .config
           make defconfig
-
-          # 4. 编译（-j2 防 OOM）
           make package/luci-app-nvr/compile V=s -j2
 
-          # 5. 诊断：只列出 luci-app-nvr 的产物
           echo "==== 生成的 ${{ matrix.pkg_type }} 文件 ===="
           find bin/ \( -name "*luci-app-nvr*.ipk" -o -name "*luci-app-nvr*.apk" \)
 
@@ -91,9 +85,10 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
+          body: ""
           draft: false
           prerelease: false
           files: release-assets/*
-          generate_release_notes: true
+          generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
