@@ -32,19 +32,19 @@ jobs:
 
       - name: Compile Package
         run: |
-          # 1. 下载对应版本的 SDK
-          wget -q "${{ matrix.sdk_url }}" -O sdk.tar.zst
-          mkdir sdk_env
-          zstd -d sdk.tar.zst -o sdk.tar
-          tar xf sdk.tar -C sdk_env --strip-components=1
+          set -e
+          # 1. 下载 SDK（统一命名为 sdk.tar，tar 会自动识别压缩格式）
+          wget -q "${{ matrix.sdk_url }}" -O sdk.tar
+          mkdir -p sdk_env
+          tar -xf sdk.tar -C sdk_env --strip-components=1
           
           # 2. 准备插件目录
           PKG_DIR="sdk_env/package/luci-app-nvr"
           mkdir -p "$PKG_DIR"
-          cp Makefile "$PKG_DIR/"
-          [ -d "luasrc" ] && cp -r luasrc "$PKG_DIR/"
-          [ -d "files" ] && cp -r files/* "$PKG_DIR/"
-          [ -d "po" ] && cp -r po "$PKG_DIR/"
+          cp -a Makefile "$PKG_DIR/"
+          [ -d luasrc ] && cp -a luasrc "$PKG_DIR/"
+          [ -d files ]  && cp -a files/. "$PKG_DIR/"
+          [ -d po ]     && cp -a po "$PKG_DIR/"
           
           # 3. 激活配置
           cd sdk_env
@@ -53,8 +53,8 @@ jobs:
           echo "CONFIG_PACKAGE_luci-app-nvr=m" >> .config
           make defconfig
           
-          # 4. 执行编译
-          make package/luci-app-nvr/compile V=s -j$(nproc)
+          # 4. 执行编译（-j2 防 OOM）
+          make package/luci-app-nvr/compile V=s -j2
           
           # 5. 诊断搜索
           echo "==== 检查生成的 ${{ matrix.pkg_type }} 文件 ===="
@@ -64,7 +64,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: luci-app-nvr-${{ matrix.version }}
-          # 自动根据版本抓取对应的 .ipk 或 .apk
           path: |
             sdk_env/bin/**/*.ipk
             sdk_env/bin/**/*.apk
